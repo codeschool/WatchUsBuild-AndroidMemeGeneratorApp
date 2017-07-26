@@ -1,6 +1,11 @@
-Watch Us Build - Creating an Android Meme Generator App
+Android WUB Script
 ============
-The source code for the Watch Us Build video where we build an Android app for generating Memes from scratch.
+Resources to have open:
+ * https://developer.android.com/reference/android/content/Intent.html
+ * https://developer.android.com/reference/android/support/v4/content/FileProvider.html
+ * https://developer.android.com/training/permissions/requesting.html
+ * https://developer.android.com/training/sharing/send.html#send-binary-content
+ * https://developer.android.com/training/camera/photobasics.html
 
 Create New Project
 --
@@ -46,46 +51,87 @@ Or another possibility would be to create method tied to the keyUp event …
  3. Change font style, and center text
  4. Remove our Create meme method
 
- Choose Picture from Gallery
- --
- In the MainActivity's Layout:
-  1. Create a Gallery Button
-  2. Add an onClick method - `pickImageFromGallery`
+Prevent Rotation
+--
+Since the image won't fit on the screen in landscape view, we're going to permanently set the orientation to portrait.  If you've used Instagram before you know they also do this.
+Add `android:screenOrientation="portrait"` to the `<activity>` element in the manifest.
 
- In `MainActivity.java`:
-  1. Create an Intent with ACTION_PICK
-  2. Get a URI to the picture directory path
-  3. Set the datay and type for the Intent using the URI and "image/*"
-  4. Call startActivityForResult()
-  5. Add uses-permission to Manifest
-  6. **AND** since API 23, we have to explicitly ask for permission
+Choose Picture from Gallery
+--
+In the MainActivity's Layout:
+1. Create a Gallery Button
+2. Add an onClick method - `pickImageFromGallery`
 
- **MainActivity.java**
- ~~~java
- public void pickImageFromGallery(View view) {
-         // https://developer.android.com/reference/android/content/Intent.html#ACTION_PICK
-         // "Pick an item from data shown, returning what was selected"
-         Intent photoPickerIntent = new Intent(Intent.ACTION_PICK);
+In `MainActivity.java`:
+1. Create an Intent with ACTION_PICK
+2. Get a URI to the picture directory path
+3. Set the data and type for the Intent using the URI and "image/*"
+4. Call startActivityForResult()
+5. Add uses-permission to Manifest
+6. **AND** since API 23, we have to explicitly ask for permission
 
-         // Where do we want to find the data/image?
-         File pictureDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-         String pictureDirectoryPath = pictureDirectory.getPath();
+ **URI** is super set of URL that means its a path to file
 
-         // Get the URI of the above path
-         Uri galleryUri = Uri.parse(pictureDirectoryPath);
+**MainActivity.java**
+~~~java
+public void pickImageFromGallery(View view) {
+       // https://developer.android.com/reference/android/content/Intent.html#ACTION_PICK
+       // "Pick an item from data shown, returning what was selected"
+       Intent photoPickerIntent = new Intent(Intent.ACTION_PICK);
 
-         // Set the data and type - we want all image types
-         photoPickerIntent.setDataAndType(galleryUri, "image/*");
+       // Where do we want to find the data/image?
+       File pictureDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+       String pictureDirectoryPath = pictureDirectory.getPath();
 
-         // Explicitly ask for permission beginning in API 23
-         askPermission();
+       // Get the URI of the above path
+       Uri galleryUri = Uri.parse(pictureDirectoryPath);
 
-         // We will invoke this activity, and get the image back in onActivityResult()
-         // The 2nd parameter is a request code that we create in case we are returning from multiple
-         // Intents.  We'll create a constant for this.
-         startActivityForResult(photoPickerIntent, PHOTO_PICKER);
-     }
- ~~~
+       // Set the data and type - we want all image types
+       photoPickerIntent.setDataAndType(galleryUri, "image/*");
+
+       // Explicitly ask for permission beginning in API 23
+       askPermission();
+
+       // We will invoke this activity, and get the image back in onActivityResult()
+       // The 2nd parameter is a request code that we create in case we are returning from multiple
+       // Intents.  We'll create a constant for this.
+       startActivityForResult(photoPickerIntent, PHOTO_PICKER);
+   }
+~~~
+
+**MainActivity.java**
+~~~java
+@Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        // requestCode is the PHOTO_PICKER constant we created, resultCode if it's successful
+        // And data is where our picture should be
+
+        if (resultCode == RESULT_OK) {
+            if (requestCode == PHOTO_PICKER) {
+                // Get our picture
+                Uri imageUri = data.getData();
+
+                // Declare a stream to read the image data from the SD card
+                InputStream inputStream;
+
+                try {
+                    // The content resolver provides applications access to persistent data
+                    // Then openInputStream() opens a stream on to the content associated with a content URI.
+                    inputStream = getContentResolver().openInputStream(imageUri);
+
+                    // Get a bitmap from the stream
+                    Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+
+                    imageView.setImageBitmap(bitmap);
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                    // Show a message to the user indicating that the image is unavailable
+                    Toast.makeText(this, "Unable to open image", Toast.LENGTH_LONG).show();
+                }
+            }
+        }
+    }
+~~~
 
  Explicitly asking for permission - https://developer.android.com/training/permissions/requesting.html
 
@@ -147,11 +193,43 @@ But what can we do with our Meme?  Let’s Create a Share Button
 
 We Need to Create and Share the Image
 --
-Creating the Image File
+ 1. Defining a FileProvider
+ 2. Specifying Available files
+ 3. Retrieving the Content Path and URI for a File
+
+1. Defining a FileProvider
 --
-Setting up File Sharing, create the file_paths.xml file and add file provider to the Manifest
+**FileProvider** is a special subclass of ContentProvider that lets you share files securely.
+First, we'll define a FileProvider by adding it to the app's Manifest file.
+https://developer.android.com/reference/android/support/v4/content/FileProvider.html
 https://developer.android.com/training/secure-file-sharing/setup-sharing.html
 
+The name is the FileProvider under the support library.  The authorities is based on the domain we control, so com.codeschool.memegenerator.fileprovider. Grant Uri permissions is true, to allow you to grant temporary access to files. Exported to false, since the provider doesn't need to be public.  Then to link the file we are going to create next to this FileProvider, add a <meta-data> element as a child of the <provider> element that defines the FileProvider. Set the <meta-data> element's "android:name" attribute to android.support.FILE_PROVIDER_PATHS. Set the element's "android:resource" attribute to @xml/file_paths (notice that you don't specify the .xml extension).
+**AndroidManifest.xml**
+~~~xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+    <application
+        ...>
+        <provider
+            android:name="android.support.v4.content.FileProvider"
+            android:authorities="com.codeschool.memegenerator.fileprovider"
+            android:grantUriPermissions="true"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        ...
+    </application>
+</manifest>
+~~~
+
+2. Specifying Available files
+Setting up File Sharing: create the file_paths.xml file.  A FileProvider can only generate a content URI for files in directories that you specify beforehand. To specify a directory, specify the its storage area and path in XML, using child elements of the <paths> element.
+The `cache-path` child, represents files in the cache subdirectory of your app's internal storage area. The root path of this subdirectory is the same as the value returned by `getCacheDir()``.
+The `name="name"` is a URI path segment separate from the subdirectory path for security.
+`path="path"`` is the subdirectory you're sharing.
 Create the file:
 **res/xml/file_paths.xml**
 ~~~xml
@@ -162,27 +240,9 @@ Create the file:
 </paths>
 ~~~
 
-**AndroidManifest.xml**
-~~~xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.myapp">
-    <application
-        ...>
-        <provider
-            android:name="android.support.v4.content.FileProvider"
-            android:authorities="com.example.myapp.fileprovider"
-            android:grantUriPermissions="true"
-            android:exported="false">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/filepaths" />
-        </provider>
-        ...
-    </application>
-</manifest>
-~~~
 
-Get the bitmap image with setDrawingCacheEnabled() and getDrawingCache()
+3. Retrieving the Content Path and URI for a File
+Also need to -- Get the bitmap image with setDrawingCacheEnabled() and getDrawingCache()
 Specify the shareable directory
 Compress the Bitmap into a FileOutputStream
 
@@ -241,3 +301,110 @@ private void shareImage() {
         }
     }
 ~~~
+
+Launch the Camera:
+--
+ 1. Request camera permission in the manifest
+ 2. We want to save the photo to external storage - so get permission for external storage
+ 3. Add an external storage directory to our file_paths.xml file (that we created earlier for sharing our meme).
+ 4. Create the Intent with MediaStore.ACTION_IMAGE_CAPTURE
+ 5. Create a file and then a Uri to save the image to
+ 6. Call startActivityForResult() with our Intent
+ 7. In onActivityResult() set our ImageView to the Image Uri of our image
+
+  1. Request camera permission in the manifest
+~~~xml
+<uses-feature android:name="android.hardware.camera"
+        android:required="true" />
+~~~
+
+  2. We want to save the photo to external storage - so get permission for external storage
+ ~~~xml
+ <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+ ~~~
+
+  3. Add an external storage directory to our file_paths.xml file (that we created earlier for sharing our meme).
+ ~~~xml
+ <?xml version="1.0" encoding="utf-8"?>
+ <paths xmlns:android="http://schemas.android.com/apk/res/android">
+     <external-path name="my_images" path="Android/data/com.codeschool.memegenerator/files/Pictures"/>
+     <cache-path name="shared_images" path="images/"/>
+ </paths>
+ ~~~
+
+  4. Create the Intent with MediaStore.ACTION_IMAGE_CAPTURE
+ ~~~java
+ static final int REQUEST_TAKE_PHOTO = 1;
+    Uri mPhotoURI = null;
+    public void launchCamera(View view) {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        // Ensure that there's a camera activity to handle the intent
+        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+            // Create the File where the photo should go
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+                ex.printStackTrace();
+            }
+
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                mPhotoURI = FileProvider.getUriForFile(this,
+                        "com.codeschool.memegenerator.fileprovider",
+                        photoFile);
+                // MediaStore.EXTRA_OUTPUT, indicates that the Uri passed in is
+                // where to store the photo or video
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, mPhotoURI);
+                // REQUEST_TAKE_PHOTO is a constant we created so we can tell which request
+                // we are handling in onActivityResult()
+                startActivityForResult(takePictureIntent, REQUEST_TAKE_PHOTO);
+            }
+        }
+    }
+ ~~~
+
+  5. Create a file and then a Uri to save the image to
+ ~~~java
+ private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        // Use the method File.createTempFile() to create a new empty file in the specified directory
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        mCurrentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
+~~~
+
+  6. Call startActivityForResult() with our Intent
+
+  7. In onActivityResult() set our ImageView to the Image Uri of our image
+~~~java
+// Returning the image taken
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK) {
+            // Get the photo - the photo isn't passed in with the intent, it's saved at the Uri
+            if (mPhotoURI!=null) {
+                imageViewMeme.setImageURI(mPhotoURI);
+                imageViewMeme.setAdjustViewBounds(false);
+                imageViewMeme.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            }
+        }
+    }
+~~~
+
+For Large Camera Photo Sizes - we can set a Max Height on the ImageView
+--
+Since the image and the buttons won't fit on the screen if the image is too big, let's set a max height on the ImageView.  We can use the property `android:maxHeight="425dp"`.  Also let's constrain the buttons to the bottom of the screen instead of the bottom of the image.
