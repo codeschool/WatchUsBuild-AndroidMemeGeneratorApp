@@ -114,15 +114,11 @@ public void pickImageFromGallery(View view) {
                 // Declare a stream to read the image data from the SD card
                 InputStream inputStream;
 
-                try {
-                    // The content resolver provides applications access to persistent data
-                    // Then openInputStream() opens a stream on to the content associated with a content URI.
-                    inputStream = getContentResolver().openInputStream(imageUri);
-
+                try {                                        
                     // Get a bitmap from the stream
-                    Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
-
-                    imageView.setImageBitmap(bitmap);
+                    Glide.with(this)
+                        .load(imageUri)
+                        .into(imageView);                    
                 } catch (FileNotFoundException e) {
                     e.printStackTrace();
                     // Show a message to the user indicating that the image is unavailable
